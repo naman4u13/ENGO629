@@ -20,29 +20,34 @@ public class EKF {
 	}
 
 	public ArrayList<double[]> process(HashMap<Integer, ArrayList<Satellite>> satMap, ArrayList<Integer> timeList,
-			double[] intialECEF) throws Exception {
+			double[] intialECEF, Flag flag) throws Exception {
 
-		double[][] x = new double[][] { { intialECEF[0] }, { intialECEF[1] }, { intialECEF[2] }, { 0 }, { 0 }, { 0 },
-				{ 0 }, { 0 } };
-		double[][] P = new double[8][8];
+		int n = 0;
+		if (flag == Flag.POSITION) {
+			n = 5;
+		} else if (flag == Flag.VELOCITY) {
+			n = 8;
+		}
+		double[][] x = new double[n][1];
+		double[][] P = new double[n][n];
+		IntStream.range(0, 3).forEach(i -> x[i][0] = intialECEF[i]);
 		IntStream.range(0, 3).forEach(i -> P[i][i] = 25);
-		IntStream.range(3, 8).forEach(i -> P[i][i] = 1e13);
-
+		IntStream.range(3, n).forEach(i -> P[i][i] = 1e13);
 		prObsNoiseVar = 100;
 		kfObj.setState_ProcessCov(x, P);
-		return iterateSPP(satMap, timeList);
+		return iterateSPP(satMap, timeList, flag);
 
 	}
 
-	private ArrayList<double[]> iterateSPP(HashMap<Integer, ArrayList<Satellite>> satMap, ArrayList<Integer> timeList)
-			throws Exception {
+	private ArrayList<double[]> iterateSPP(HashMap<Integer, ArrayList<Satellite>> satMap, ArrayList<Integer> timeList,
+			Flag flag) throws Exception {
 		ArrayList<double[]> ecefList = new ArrayList<double[]>();
 		int time = timeList.get(0);
 		for (int i = 1; i < timeList.size(); i++) {
 			int currentTime = timeList.get(i);
 			ArrayList<Satellite> satList = satMap.get(currentTime);
 			double deltaT = currentTime - time;
-			runFilter(deltaT, satList);
+			runFilter(deltaT, satList, flag);
 			SimpleMatrix x = kfObj.getState();
 			SimpleMatrix P = kfObj.getCovariance();
 			double[] estECEF = new double[] { x.get(0), x.get(1), x.get(2) };
@@ -58,11 +63,11 @@ public class EKF {
 		return ecefList;
 	}
 
-	private void runFilter(double deltaT, ArrayList<Satellite> satList) {
+	private void runFilter(double deltaT, ArrayList<Satellite> satList, Flag flag) {
 
 		int n = satList.size();
 
-		kfObj.configSPP(deltaT);
+		kfObj.configSPP(deltaT, flag);
 		kfObj.predict();
 
 		SimpleMatrix x = kfObj.getState();
@@ -72,7 +77,7 @@ public class EKF {
 		// H is the Jacobian matrix of partial derivatives Observation StateModel(h) of
 		// with
 		// respect to x
-		double[][] H = getJacobian(satList, estECEF);
+		double[][] H = getJacobian(satList, estECEF, x.numRows());
 		double[][] z = new double[n][1];
 		IntStream.range(0, n).forEach(i -> z[i][0] = satList.get(i).getPseduorange());
 		double[][] ze = new double[n][1];
@@ -82,14 +87,19 @@ public class EKF {
 								.map(j -> j * j).reduce(0, (j, k) -> j + k))
 						+ rxClkOff);
 		double[][] R = new double[n][n];
-		IntStream.range(0, n).forEach(i -> R[i][i] = prObsNoiseVar);
+		for (int i = 0; i < n; i++) {
+			double elevAngle = Math.toRadians(satList.get(i).getElevation());
+			double var = 1 / Math.pow(Math.sin(elevAngle), 2);
+			R[i][i] = var;
+		}
+//		IntStream.range(0, n).forEach(i -> R[i][i] = prObsNoiseVar);
 		kfObj.update(z, R, ze, H);
 
 	}
 
-	private double[][] getJacobian(ArrayList<Satellite> satList, double[] estECEF) {
+	private double[][] getJacobian(ArrayList<Satellite> satList, double[] estECEF, int stateN) {
 		int n = satList.size();
-		double[][] H = new double[n][8];
+		double[][] H = new double[n][stateN];
 
 		for (int i = 0; i < n; i++) {
 			Satellite sat = satList.get(i);

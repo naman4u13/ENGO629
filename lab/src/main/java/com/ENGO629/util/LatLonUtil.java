@@ -1,5 +1,7 @@
 package com.ENGO629.util;
 
+import org.ejml.simple.SimpleMatrix;
+
 public class LatLonUtil {
 	// All are WGS-84 params
 	// Semi-major axis or Equatorial radius
@@ -79,4 +81,18 @@ public class LatLonUtil {
 		return (c * r);
 	}
 
+	public static double[] ecef2enu(double[] ecef, double[] refEcef) {
+		double[] _diff = new double[] { ecef[0] - refEcef[0], ecef[1] - refEcef[1], ecef[2] - refEcef[2] };
+		SimpleMatrix diff = new SimpleMatrix(3, 1, false, _diff);
+		double[] llh = ecef2lla(refEcef);
+		double lat = llh[0];
+		double lon = llh[1];
+		double[][] _R = new double[][] { { -Math.sin(lon), Math.cos(lon), 0 },
+				{ -Math.sin(lat) * Math.cos(lon), -Math.sin(lat) * Math.sin(lon), Math.cos(lat) },
+				{ Math.cos(lat) * Math.cos(lon), Math.cos(lat) * Math.sin(lon), Math.sin(lat) } };
+		SimpleMatrix R = new SimpleMatrix(_R);
+		SimpleMatrix _enu = R.mult(diff);
+		double[] enu = new double[] { _enu.get(0), _enu.get(1), _enu.get(2) };
+		return enu;
+	}
 }
