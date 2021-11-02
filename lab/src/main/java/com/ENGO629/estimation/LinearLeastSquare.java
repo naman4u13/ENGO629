@@ -26,6 +26,7 @@ public class LinearLeastSquare {
 				double var = 1 / Math.pow(Math.sin(elevAngle), 2);
 				weight[i][i] = 1 / var;
 			}
+
 		} else {
 			IntStream.range(0, n).forEach(i -> weight[i][i] = 1);
 		}
