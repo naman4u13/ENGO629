@@ -2,12 +2,17 @@ package com.ENGO629.models;
 
 public class Satellite {
 
+	// GPS time
 	private int t;
+	// Satellite PRN
 	private int prn;
+	// ECEF coordinates
 	private double[] ecef;
-
+	// Pseudorange(in m)
 	private double pseduorange;
+	// Carrier Phase
 	private double phase;
+	// Elevation angle
 	private double elevation;
 
 	public Satellite(int t, int prn, double x, double y, double z, double pseduorange, double phase, double elevation) {

@@ -8,11 +8,8 @@ import java.io.InputStreamReader;
 import java.io.PrintStream;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.stream.IntStream;
-
-import org.jfree.ui.RefineryUtilities;
 
 import com.ENGO629.estimation.LinearLeastSquare;
 import com.ENGO629.estimation.kf.EKF;
@@ -26,20 +23,23 @@ public class MainApp {
 	public static void main(String[] args) throws IOException {
 		try {
 
-			String path = "D:\\projects\\eclipse_projects\\UCalgary\\ENGO629\\results\\output2";
+			// Path to store output file
+			String path = "D:\\projects\\eclipse_projects\\UCalgary\\ENGO629\\results\\test";
 			File output = new File(path + ".txt");
 			PrintStream stream;
 			stream = new PrintStream(output);
 			System.setOut(stream);
 			ArrayList<Integer> timeList = new ArrayList<Integer>();
 			ArrayList<double[]> rxEcefList = new ArrayList<double[]>();
-			HashMap<String, ArrayList<double[]>> ErrMap = new HashMap<String, ArrayList<double[]>>();
+			// Map based variable to store enu errors for each algorithm
 			HashMap<String, ArrayList<double[]>> EnuMap = new HashMap<String, ArrayList<double[]>>();
 			String fileName = "satpos_meas.txt";
 			InputStream is = MainApp.class.getClassLoader().getResourceAsStream(fileName);
 			BufferedReader br = new BufferedReader(new InputStreamReader(is));
 			String line = null;
+			// Map based variable to store satellite data, (k,v) -> (epoch,satellite list)
 			HashMap<Integer, ArrayList<Satellite>> satMap = new HashMap<Integer, ArrayList<Satellite>>();
+			// Parsing "satpos_meas.txt" file
 			while ((line = br.readLine()) != null) {
 				double[] data = Arrays.stream(line.split("\\s+")).mapToDouble(i -> Double.parseDouble(i)).toArray();
 				satMap.computeIfAbsent((int) data[0], k -> new ArrayList<Satellite>()).add(new Satellite(data));
@@ -47,109 +47,81 @@ public class MainApp {
 			fileName = "refpos.txt";
 			is = MainApp.class.getClassLoader().getResourceAsStream(fileName);
 			br = new BufferedReader(new InputStreamReader(is));
+			// Choose which type of PVT method to implement - LS, WLS, EKF
 			int estimatorType = 3;
+			// Parsing 'refpos.txt' line by line
 			while ((line = br.readLine()) != null) {
 				double[] data = Arrays.stream(line.split("\\s+")).mapToDouble(i -> Double.parseDouble(i)).toArray();
+				// epoch GPS time
 				int t = (int) data[0];
+				// True receiver(rx) ECEF position
 				double[] rxECEF = Arrays.copyOfRange(data, 1, 4);
+				// Get satellite list for that epoch
 				ArrayList<Satellite> satList = satMap.get(t);
+				// variable to store estimated rx position and clk offset
 				double[] estEcefClk = null;
 				switch (estimatorType) {
 				case 1:
+					// Implement LS method
 					estEcefClk = LinearLeastSquare.process(satList, false);
-					ErrMap.computeIfAbsent("LS", k -> new ArrayList<double[]>()).add(estimateError(estEcefClk, rxECEF));
 					EnuMap.computeIfAbsent("LS", k -> new ArrayList<double[]>()).add(estimateENU(estEcefClk, rxECEF));
 					break;
 				case 2:
+					// Implement WLS method
 					estEcefClk = LinearLeastSquare.process(satList, true);
-					ErrMap.computeIfAbsent("WLS", k -> new ArrayList<double[]>())
-							.add(estimateError(estEcefClk, rxECEF));
 					EnuMap.computeIfAbsent("WLS", k -> new ArrayList<double[]>()).add(estimateENU(estEcefClk, rxECEF));
 
 					break;
 				case 3:
+					// Implement all PVT methods
 					estEcefClk = LinearLeastSquare.process(satList, false);
-					ErrMap.computeIfAbsent("LS", k -> new ArrayList<double[]>()).add(estimateError(estEcefClk, rxECEF));
 					EnuMap.computeIfAbsent("LS", k -> new ArrayList<double[]>()).add(estimateENU(estEcefClk, rxECEF));
 
 					estEcefClk = LinearLeastSquare.process(satList, true);
-					ErrMap.computeIfAbsent("WLS", k -> new ArrayList<double[]>())
-							.add(estimateError(estEcefClk, rxECEF));
 					EnuMap.computeIfAbsent("WLS", k -> new ArrayList<double[]>()).add(estimateENU(estEcefClk, rxECEF));
 
 					break;
 
 				}
+
 				rxEcefList.add(rxECEF);
 				timeList.add(t);
 
 			}
+
 			if (estimatorType == 4 || estimatorType == 3) {
 				EKF ekf = new EKF();
 				double[] initialECEF = LinearLeastSquare.process(satMap.get(timeList.get(0)), false);
+				// Implement EKF based on receiver’s position and clock offset errors as a
+				// random walk process
 				ArrayList<double[]> estEcefList_pos = ekf.process(satMap, timeList, initialECEF, Flag.POSITION);
+				// Implement EKF based on receiver’s velocity and clock drift errors as a random
+				// walk process
 				ArrayList<double[]> estEcefList_vel = ekf.process(satMap, timeList, initialECEF, Flag.VELOCITY);
 				for (int i = 1; i < timeList.size(); i++) {
-					ErrMap.computeIfAbsent("EKF - pos. random walk", k -> new ArrayList<double[]>())
-							.add(estimateError(estEcefList_pos.get(i - 1), rxEcefList.get(i)));
 					EnuMap.computeIfAbsent("EKF - pos. random walk", k -> new ArrayList<double[]>())
 							.add(estimateENU(estEcefList_pos.get(i - 1), rxEcefList.get(i)));
 
-					ErrMap.computeIfAbsent("EKF - vel. random walk", k -> new ArrayList<double[]>())
-							.add(estimateError(estEcefList_vel.get(i - 1), rxEcefList.get(i)));
 					EnuMap.computeIfAbsent("EKF - vel. random walk", k -> new ArrayList<double[]>())
 							.add(estimateENU(estEcefList_vel.get(i - 1), rxEcefList.get(i)));
 				}
 			}
-			HashMap<String, ArrayList<Double>> GraphErrMap = new HashMap<String, ArrayList<Double>>();
-			for (String key : ErrMap.keySet()) {
 
-				ArrayList<double[]> errList = ErrMap.get(key);
-				ArrayList<Double> ecefErrList = new ArrayList<Double>();
-				ArrayList<Double> llErrList = new ArrayList<Double>();
-				for (int i = 0; i < errList.size(); i++) {
-					ecefErrList.add(errList.get(i)[0]);
-					llErrList.add(errList.get(i)[1]);
-				}
-				String header = "order - ";
-				String minECEF = "ECEF - ";
-				String minLL = "LL - ";
-				String rmsECEF = "ECEF - ";
-				String maeECEF = "ECEF - ";
-				String rmsLL = "LL - ";
-				String maeLL = "LL - ";
-
-				minECEF += Collections.min(ecefErrList) + " ";
-				minLL += Collections.min(llErrList) + " ";
-				rmsECEF += RMS(ecefErrList) + " ";
-				rmsLL += RMS(llErrList) + " ";
-				maeECEF += MAE(ecefErrList) + " ";
-				maeLL += MAE(llErrList) + " ";
-				GraphErrMap.put(key + " ECEF off", ecefErrList);
-				GraphErrMap.put(key + " LL off", llErrList);
-
-				System.out.println("\n" + key);
-				System.out.println(header);
-				System.out.println("MIN - ");
-				System.out.println(minECEF);
-				System.out.println(minLL);
-				System.out.println("RMS - ");
-				System.out.println(rmsECEF);
-				System.out.println(rmsLL);
-				System.out.println("MAE - ");
-				System.out.println(maeECEF);
-				System.out.println(maeLL);
-
-			}
+			// Calculate Accuracy Metrics
 			HashMap<String, ArrayList<double[]>> GraphEnuMap = new HashMap<String, ArrayList<double[]>>();
 			for (String key : EnuMap.keySet()) {
-
+				ArrayList<Double>[] errLists = new ArrayList[5];
 				ArrayList<double[]> enuList = EnuMap.get(key);
 				int n = enuList.size();
+				// 3d RMSE
 				double err = 0;
+				// 2d RMSE
 				double horizontalErr = 0;
+				// Easting RMSE
 				double eErr = 0;
+				// Northing RMSE
 				double nErr = 0;
+				// Vertical RMSE
 				double uErr = 0;
 
 				for (int i = 0; i < n; i++) {
@@ -178,12 +150,9 @@ public class MainApp {
 
 			}
 
-			GraphPlotter chart = new GraphPlotter("GPS PVT Error - ", "Error Estimate(m)", GraphErrMap, timeList);
-			chart.pack();
-			RefineryUtilities.positionFrameRandomly(chart);
-			chart.setVisible(true);
-
+			// Plot Error Graphs
 			GraphPlotter.graphENU(GraphEnuMap, timeList);
+
 		} catch (Exception e) {
 			// TODO: handle exception
 			e.printStackTrace();
@@ -205,6 +174,7 @@ public class MainApp {
 		return err;
 	}
 
+	// Transform from ECEF to ENU
 	public static double[] estimateENU(double[] estEcefClk, double[] rxECEF) {
 		double[] enu = LatLonUtil.ecef2enu(estEcefClk, rxECEF);
 		return enu;

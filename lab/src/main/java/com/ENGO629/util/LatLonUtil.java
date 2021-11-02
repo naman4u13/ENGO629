@@ -81,6 +81,8 @@ public class LatLonUtil {
 		return (c * r);
 	}
 
+	// Reference -
+	// https://en.wikipedia.org/wiki/Geographic_coordinate_conversion#From_ECEF_to_ENU
 	public static double[] ecef2enu(double[] ecef, double[] refEcef) {
 		double[] _diff = new double[] { ecef[0] - refEcef[0], ecef[1] - refEcef[1], ecef[2] - refEcef[2] };
 		SimpleMatrix diff = new SimpleMatrix(3, 1, false, _diff);

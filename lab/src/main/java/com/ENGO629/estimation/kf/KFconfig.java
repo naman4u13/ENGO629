@@ -16,9 +16,15 @@ public class KFconfig extends KF {
 	private final double sf = h0 / 2;
 	private final double sg = 2 * Math.PI * Math.PI * h_2;
 
-	public void configSPP(double deltaT, Flag flag) {
+	public void config(double deltaT, Flag flag) {
 
+		/*
+		 * The process noise for position vector will be initialized in ENU frame and
+		 * will then be changed to ECEF frame. Rotation matrix 'R' will be computed to
+		 * perform the coordinate transform.
+		 */
 		double[] ecef = new double[] { getState().get(0), getState().get(1), getState().get(2) };
+		// Rotation matrix
 		SimpleMatrix R = getR(ecef);
 		if (flag == Flag.POSITION) {
 
@@ -26,10 +32,9 @@ public class KFconfig extends KF {
 			double[][] Q = new double[5][5];
 			IntStream.range(0, 5).forEach(i -> F[i][i] = 1);
 			F[3][4] = deltaT;
-			double[] qENU = new double[] { 100, 100, 0 };
+			double[] qENU = new double[] { 100, 100, 1 };
 			double[] qECEF = enuToEcef(R, qENU);
 			double[] q = qECEF;
-			// double[] q = new double[] { 1000, 1000, 1000 };
 			IntStream.range(0, 3).forEach(i -> Q[i][i] = q[i]);
 			Q[3][3] = ((sf * deltaT) + ((sg * Math.pow(deltaT, 3)) / 3)) * c2;
 			Q[3][4] = (sg * Math.pow(deltaT, 2)) * c2 / 2;
@@ -44,7 +49,6 @@ public class KFconfig extends KF {
 			IntStream.range(0, 4).forEach(i -> F[i][i + 4] = deltaT);
 			double[] qENU = new double[] { 4, 4, 0 };
 			double[] qECEF = enuToEcef(R, qENU);
-			// double[] q = new double[] { 25, 25, 25, sg * c2 };
 			double[] q = new double[] { qECEF[0], qECEF[1], qECEF[2], sg * c2 };
 			for (int i = 0; i < 4; i++) {
 				Q[i][i] = q[i] * Math.pow(deltaT, 3) / 3;
@@ -57,6 +61,11 @@ public class KFconfig extends KF {
 		}
 	}
 
+	/*
+	 * Compute Rotation Matrix to transform from ENU to ECEF frame. Reference -
+	 * https://en.wikipedia.org/wiki/Geographic_coordinate_conversion#
+	 * From_ENU_to_ECEF
+	 */
 	private SimpleMatrix getR(double[] ecef) {
 		double[] llh = LatLonUtil.ecef2lla(ecef);
 		double lat = Math.toRadians(llh[0]);
@@ -69,6 +78,7 @@ public class KFconfig extends KF {
 		return R;
 	}
 
+	// Perform transformation from ENU to ECEF
 	private double[] enuToEcef(SimpleMatrix R, double[] _enuParam) {
 
 		SimpleMatrix enuParam = new SimpleMatrix(3, 1, false, _enuParam);
