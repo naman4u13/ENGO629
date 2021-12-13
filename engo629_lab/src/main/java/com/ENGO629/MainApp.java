@@ -12,7 +12,9 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.stream.IntStream;
 
+import com.ENGO629.estimation.IF_Weight;
 import com.ENGO629.estimation.LinearLeastSquare;
+import com.ENGO629.estimation.RobustLeastSquare;
 import com.ENGO629.estimation.kf.EKF;
 import com.ENGO629.estimation.kf.Flag;
 import com.ENGO629.models.Satellite;
@@ -25,7 +27,7 @@ public class MainApp {
 		try {
 
 			// Path to store output file
-			String path = "D:\\projects\\eclipse_projects\\UCalgary\\ENGO629\\results\\output";
+			String path = "D:\\projects\\eclipse_projects\\UCalgary\\ENGO629\\results\\output2";
 			File output = new File(path + ".txt");
 			PrintStream stream;
 			stream = new PrintStream(output);
@@ -48,8 +50,9 @@ public class MainApp {
 			fileName = "refpos.txt";
 			is = MainApp.class.getClassLoader().getResourceAsStream(fileName);
 			br = new BufferedReader(new InputStreamReader(is));
-			// Choose which type of PVT method to implement - LS, WLS, EKF
-			int estimatorType = 3;
+			// Choose which type of PVT method to implement - LS, WLS,Robust LS, EKF
+			int estimatorType = 4;
+			IF_Weight IFweight = IF_Weight.HUBER;
 			// Parsing 'refpos.txt' line by line
 			while ((line = br.readLine()) != null) {
 				double[] data = Arrays.stream(line.split("\\s+")).mapToDouble(i -> Double.parseDouble(i)).toArray();
@@ -74,10 +77,28 @@ public class MainApp {
 
 					break;
 				case 3:
-					// Implement all PVT methods
+
+					// Implement Robust LS method
 					estEcefClk = LinearLeastSquare.process(satList, false);
 					EnuMap.computeIfAbsent("LS", k -> new ArrayList<double[]>()).add(estimateENU(estEcefClk, rxECEF));
+					estEcefClk = RobustLeastSquare.process(satList, estEcefClk, IFweight);
+					EnuMap.computeIfAbsent("Robust-LS " + IFweight.toString(), k -> new ArrayList<double[]>())
+							.add(estimateENU(estEcefClk, rxECEF));
+					break;
 
+				case 4:
+					// Implement all PVT methods
+					double[] llsEcefClk = LinearLeastSquare.process(satList, false);
+					EnuMap.computeIfAbsent("LS", k -> new ArrayList<double[]>()).add(estimateENU(llsEcefClk, rxECEF));
+					estEcefClk = RobustLeastSquare.process(satList, llsEcefClk, IF_Weight.HUBER);
+					EnuMap.computeIfAbsent("Robust-LS HUBER", k -> new ArrayList<double[]>())
+							.add(estimateENU(estEcefClk, rxECEF));
+					estEcefClk = RobustLeastSquare.process(satList, llsEcefClk, IF_Weight.HAMPEL);
+					EnuMap.computeIfAbsent("Robust-LS HAMPEL", k -> new ArrayList<double[]>())
+							.add(estimateENU(estEcefClk, rxECEF));
+					estEcefClk = RobustLeastSquare.process(satList, llsEcefClk, IF_Weight.ANDREW);
+					EnuMap.computeIfAbsent("Robust-LS ANDREW", k -> new ArrayList<double[]>())
+							.add(estimateENU(estEcefClk, rxECEF));
 					estEcefClk = LinearLeastSquare.process(satList, true);
 					EnuMap.computeIfAbsent("WLS", k -> new ArrayList<double[]>()).add(estimateENU(estEcefClk, rxECEF));
 
@@ -90,7 +111,7 @@ public class MainApp {
 
 			}
 
-			if (estimatorType == 4 || estimatorType == 3) {
+			if (estimatorType == 5) {
 				EKF ekf = new EKF();
 				double[] initialECEF = LinearLeastSquare.process(satMap.get(timeList.get(0)), false);
 				// Implement EKF based on receiver’s position and clock offset errors as a
@@ -135,7 +156,7 @@ public class MainApp {
 				GraphEnuMap.put(key, enuList);
 
 				// RMSE
-				System.out.println("\n" + key + " RMSE");
+				System.out.println("\n" + key);
 				System.out.println("RMS - ");
 				System.out.println(" E - " + RMS(errList[0]));
 				System.out.println(" N - " + RMS(errList[1]));
@@ -193,6 +214,10 @@ public class MainApp {
 
 	public static double MAE(ArrayList<Double> list) {
 		return list.stream().mapToDouble(x -> x).average().orElse(Double.NaN);
+	}
+
+	public static double err(double[] a, double[] b) {
+		return Math.sqrt(IntStream.range(0, 3).mapToDouble(i -> a[i] - b[i]).map(i -> i * i).sum());
 	}
 
 }

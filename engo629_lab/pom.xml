@@ -11,9 +11,6 @@
 	</properties>
 	
 	<dependencies>
-	
-
-
 		<dependency>
 			<groupId>org.ejml</groupId>
 			<artifactId>ejml-simple</artifactId>
